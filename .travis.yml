@@ -1,0 +1,22 @@
+language: cpp
+compiler:
+  - gcc
+install:
+  - sudo apt-get -qq update
+  - sudo apt-get -qq install python3
+script:
+  - ./runtests
+branches:
+  only:
+    - master
+notifications:
+  #irc:
+    #channels:
+      #- "chat.freenode.net#mwa"
+    #template:
+      #- "%{repository}/%{branch} (%{commit} - %{author}): %{message}"
+  email:
+    recipients:
+      - jkaluza@redhat.com
+    on_success: always
+    on_failure: always

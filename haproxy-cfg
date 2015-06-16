@@ -1,0 +1,386 @@
+#!/usr/bin/env python
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# Author: Jan Kaluza <jkaluza at redhat dot com>
+# Description: Converts webserver configuration from webconfig-spec JSON
+# format to native HAProxy configuration format.
+
+from __future__ import print_function
+from urlparse import urlparse
+import sys
+import json
+import os
+import uuid
+import StringIO
+
+# For the tests, we want to use not random UUIDs, so switch
+# to debug_uuid when running with --debug
+debug_counter = 0
+def debug_uuid():
+    global debug_counter
+    debug_counter += 1
+    return "debug_" + str(debug_counter)
+
+if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+    uuid.uuid1 = debug_uuid
+
+def print_help():
+    print("Usage:", sys.argv[0], "<config_file_or_directory> <output_directory>")
+
+# Loads the config "c" and store it to internal configs storage "cfgs".
+def load_config(cfgs, c):
+    # The configs stored in Kubernetes/Openshift API-server can have their IDs.
+    # We use the ID here as a name of the web application configured by the
+    # config, so later when generating the httpd config, we can name it
+    # according to web application configured by the config.
+    if "id" in c:
+        name = c["id"]
+        name = name.replace("-","_")
+    else:
+        name = str(uuid.uuid1())
+
+    # In case the ID is not unique and the config with this ID has been
+    # already loaded, append UUID to it.
+    if name in cfgs["webapps"]:
+        name += str(uuid.uuid1())
+
+    # For now we support also loading from "webconfig".
+    # FIXME: This is not according to webconfig-spec. Micro-webapps confd.py has
+    # to be fixed before removing this.
+    if "webconfig" in c:
+        cfgs["webapps"][name] = c["webconfig"]
+    else:
+        cfgs["webapps"][name] = c
+
+    return cfgs
+
+# Replaces %X% with value of X environment variable.
+# Replaces %THIS_X% with value of app_name_X environment variable.
+# FIXME: ^ Is this realy needed or beneficial?
+def expand_variables(line, app_name):
+    if line.startswith("%") and line.endswith("%"):
+        env = line[1:-1]
+        if env.startswith("THIS_"):
+            env = env.replace("THIS_", app_name.upper() + "_")
+        return os.getenv(env, "")
+
+    ret = ""
+    lst = line.split("%")
+    for part in lst:
+        env = part
+        if env.startswith("THIS_"):
+            env = env.replace("THIS_", app_name.upper() + "_")
+        val = os.getenv(env, False)
+        if val == False:
+            ret += part + "%"
+        else:
+            ret = ret[:-1]
+            ret += val
+    return ret[:-1] # remove last %
+
+# Returns two objects from "cfgs":
+# - webapps_per_vhost - {vhost1:[app1_cfg, app2_cfg, ...], ...}
+# - webapps_without_vhost - [app1_cfg, app2_cfg, ...]
+def get_webapps_per_vhost(cfgs):
+    webapps_per_vhost = {}
+    webapps_without_vhost = []
+    for app, app_cfg in cfgs["webapps"].items():
+        # We would loss the app name, so store it under __name__ key.
+        # FIXME: Maybe in the future we could create App class here.
+        app_cfg["__name__"] = app
+        if "virtualhost" in app_cfg:
+            # virtualhost can contain variable, so at first try to expand it.
+            # If it's empty after the expansion, append it to
+            # webapp_without_vhost list.
+            vhost = expand_variables(app_cfg["virtualhost"], app)
+            if len(vhost) == 0:
+                webapps_without_vhost.append(app_cfg)
+            else:
+                if not vhost in webapps_per_vhost:
+                    webapps_per_vhost[vhost] = []
+                webapps_per_vhost[vhost].append(app_cfg)
+        else:
+            webapps_without_vhost.append(app_cfg)
+    
+    return webapps_per_vhost, webapps_without_vhost
+
+class HAProxyProxyGenerator:
+    def __init__(self, parent):
+        self.p = parent
+        self.name = "proxy"
+
+    # Returns address of proxy in protocol://address:port format.
+    # Returns None if the address cannot be obtained or is not set
+    # in the proxy_cfg.
+    def get_address(self, proxy_cfg):
+        if "proxy_protocol" in proxy_cfg:
+            ret = expand_variables(proxy_cfg["proxy_protocol"], self.p.app_name)
+            if len(ret) == 0:
+                ret = "http://"
+        else:
+            ret = "http://"
+
+        # For Kubernetes/Openshift, we allow getting the address and port of
+        # the backend from the APP_NAME_PORT environment variable.
+        address_env = self.p.app_name.upper() + "_PORT"
+        address = os.getenv(address_env, False)
+        if address:
+            url = urlparse(address)
+            # If we are running in Kubernetes/Openshift, use the IP address,
+            # because it's static per service. Otherwise use the hostname
+            # (app_name) and port from _PORT.
+            if os.getenv("KUBERNETES_SERVICE_PORT", False) != False:
+                ret += url.netloc
+            else:
+                ret += self.p.app_name + ":" + str(url.port)
+        else:
+            # The APP_NAME_PORT variable is not set, so fallback to
+            # proxy_hostname and proxy_port.
+            if "proxy_hostname" in proxy_cfg:
+                if proxy_cfg["proxy_hostname"] == "env":
+                    print("proxy_hostname is set to 'env', but {0} is not set".format(address_env))
+                    return None
+                else:
+                    ret += proxy_cfg["proxy_hostname"]
+            else:
+                return None
+
+            if "proxy_port" in proxy_cfg:
+                if proxy_cfg["proxy_hostname"] == "env":
+                    print("proxy_port is set to 'env', but {0} is not set".format(address_env))
+                    return None
+                else:
+                    ret += ":" + str(proxy_cfg["proxy_port"])
+            else:
+                return None
+
+        return ret
+
+    def write_proxypass(self, proxy_cfg):
+        address = self.get_address(proxy_cfg)
+        if not address:
+            return
+
+        # Default values...
+        if not "proxy_backend_alias" in proxy_cfg:
+            proxy_cfg["proxy_backend_alias"] = "/"
+        if not "proxy_alias" in proxy_cfg:
+            proxy_cfg["proxy_alias"] = "/"
+
+        parsed = urlparse(address)
+        backend_alias = expand_variables(proxy_cfg["proxy_backend_alias"], self.p.app_name)
+        proxy_alias = expand_variables(proxy_cfg["proxy_alias"], self.p.app_name)
+
+        self.p.write(self.p.backends, "http-request set-header Host {0}", parsed.hostname)
+        self.p.write(self.p.backends, "reqirep  ^([^\\ :]*)\\ {0}/(.*)     \\1\\ {1}/\\2", proxy_alias, backend_alias)
+
+        self.p.write(self.p.backends, "acl hdr_location res.hdr(Location) -m found")
+        self.p.write(self.p.backends, "rspirep ^Location:\\ (https?://{0}(:[0-9]+)?)?(/.*) Location:\\ {1}/ if hdr_location", parsed.hostname, backend_alias)
+
+        self.p.write(self.p.backends, "server {0} {1}", str(uuid.uuid1()), address[address.find("//") + 2:])
+
+    def handle(self, proxy_cfg):
+        if (not "proxy_hostname" in proxy_cfg
+            and not "proxy_port" in proxy_cfg
+            and not "proxy_protocol" in proxy_cfg
+            and not "proxy_alias" in proxy_cfg
+            and not "proxy_backend_alias" in proxy_cfg):
+            return True
+
+        self.write_proxypass(proxy_cfg)
+        return True
+
+class HAProxyGenerator:
+    def __init__(self, main, backends):
+        self.frontend = main
+        self.backends = backends
+        self.app_name = ""
+        self.vhost_name = ""
+        self.nested_sections = ["main"]
+
+        # Directive handlers must not call run_directive_handlers
+        # or run_section_handlers.
+        self.directive_handlers = []
+        self.directive_handlers.append(HAProxyProxyGenerator(self))
+
+        # Section handlers are supposed to do their stuff and call
+        # run_directive_handlers or run_section_handlers
+        self.section_handlers = []
+
+    # Writes the data to output file, expands the variables, uses the proper
+    # indentation.
+    def write(self, where, data, *args):
+        if len(data) != 0:
+            if len(args) == 1:
+                args = (expand_variables(args[0], self.app_name),)
+                if len(args[0]) == 0:
+                    return;
+            line = (len(self.nested_sections) - 1) * 4 * " " + data.format(*args)
+            line = expand_variables(line, self.app_name)
+            where.write(line)
+        where.write("\n")
+
+    # Runs the handlers from the list "lst" with config "cfg".
+    # When enable/disable list is set, only enabled and not disabled handler
+    # (based on their names) will be run.
+    def run_handlers(self, lst, cfg, enable, disable):
+        for handler in lst:
+            if len(disable) != 0 and handler.name in disable:
+                continue
+            if len(enable) != 0 and not handler.name in enable:
+                continue
+            if not handler.handle(cfg):
+                return False
+        return True
+
+    def run_directive_handlers(self, cfg, enable = [], disable = []):
+        return self.run_handlers(self.directive_handlers, cfg, enable, disable)
+
+    def run_section_handlers(self, cfg, enable = [], disable = []):
+        return self.run_handlers(self.section_handlers, cfg, enable, disable)
+
+    def write_app_config(self, app_cfg, enable = [], disable = []):
+        self.app_name = app_cfg["__name__"]
+        self.run_directive_handlers(app_cfg, enable, disable)
+        self.run_section_handlers(app_cfg, enable, disable)
+
+    def write_vhost_config(self, vhost, vhost_cfg, ssl = False):
+        self.vhost_name = vhost
+        
+        for cfg in vhost_cfg:
+            self.nested_sections.insert(0, "virtualhost")
+            alias = cfg["proxy_backend_alias"]
+
+            backend_host = "backend_host_" + str(uuid.uuid1())
+            backend_path = "backend_path_" + str(uuid.uuid1())
+            backend_name = "backend_" + str(uuid.uuid1())
+            self.write(self.frontend, "acl {0} req.hdr(Host) {1}", backend_host, vhost)
+            self.write(self.frontend, "acl {0} path -m beg {1}", backend_path, alias)
+            self.write(self.frontend, "use_backend {0} if {1} {2}", backend_name, backend_host, backend_path)
+
+            self.nested_sections.pop(0)
+            self.write(self.backends, "backend {0}", backend_name)
+            self.nested_sections.insert(0, "virtualhost")
+
+            self.write_app_config(cfg)
+        
+        # TODO: Add SSL support
+        #if not ssl:
+            #enable_ssl = False
+            #only_redirect = False
+            #self.write("# This file is automatically generated, do not edit!")
+            #self.write("")
+            #self.write("<VirtualHost *:80>")
+
+            #self.nested_sections.insert(0, "virtualhost")
+            #self.write("ServerName {0}", vhost)
+
+            #for cfg in vhost_cfg:
+                #self.app_name = cfg["__name__"]
+                #if "certificate" in cfg and len(expand_variables(cfg["certificate"], self.app_name)) != 0:
+                    #enable_ssl = True
+
+            #for cfg in vhost_cfg:
+                #self.app_name = cfg["__name__"]
+                #if "redirect" in cfg and cfg["redirect"].split(" ")[0] == "/" and enable_ssl:
+                    #self.run_directive_handlers(cfg, "redirect")
+                    #only_redirect = True
+
+            #for cfg in vhost_cfg:
+                #if not only_redirect:
+                    #self.write_app_config(cfg, disable = ["certificate"])
+            #self.nested_sections.pop(0)
+
+            #self.write("</VirtualHost>")
+            #self.write("")
+
+            #if enable_ssl:
+                #self.write_vhost_config(vhost, vhost_cfg, True)
+        #else:
+            #self.write("<VirtualHost *:443>")
+
+            #self.nested_sections.insert(0, "virtualhost")
+            #self.write("ServerName {0}", vhost)
+
+            #for cfg in vhost_cfg:
+                #self.app_name = cfg["__name__"]
+                #if "redirect" in cfg and cfg["redirect"].split(" ")[0] != "/":
+                    #self.run_directive_handlers(cfg, "redirect")
+
+            #for cfg in vhost_cfg:
+                #self.write_app_config(cfg, disable = ["redirect"])
+            #self.nested_sections.pop(0)
+
+            #self.write("</VirtualHost>")
+            #self.write("")
+
+def generate_config(inp, outp):
+    cfgs = {"webapps":{}}
+    if os.path.isdir(inp):
+        for f in os.listdir(inp):
+            if f.endswith(".json"):
+                f = open(inp + "/" + f, "r")
+                c = json.load(f)
+                f.close()
+                cfgs = load_config(cfgs, c)
+    else:
+        f = open(inp, "r")
+
+        cfgs = json.load(f)
+        f.close()
+
+    main = StringIO.StringIO()
+    main.write("""global
+        maxconn 4096
+        node lb1
+        spread-checks 5
+
+defaults
+        log     global
+        mode    http
+        # option  httplog
+        option  dontlognull
+        retries 3
+        option redispatch
+        maxconn 2000
+        contimeout      5000
+        clitimeout      50000
+        srvtimeout      50000
+
+frontend ft_global
+        bind *:80
+        mode http
+""")
+
+    backends = StringIO.StringIO()
+
+    webapps_per_vhost, webapps_without_vhost = get_webapps_per_vhost(cfgs)
+    for vhost, vhost_cfg in webapps_per_vhost.items():
+        generator = HAProxyGenerator(main, backends)
+        generator.write_vhost_config(vhost, vhost_cfg)
+
+    out = open(outp, "w")
+    out.write(main.getvalue())
+    out.write(backends.getvalue())
+    out.close()
+    return 0
+
+def main():
+    if len(sys.argv) < 3:
+        print_help()
+        return 1
+
+    return generate_config(sys.argv[1], sys.argv[2])
+
+sys.exit(main())
