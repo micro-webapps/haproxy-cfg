@@ -27,10 +27,10 @@ frontend ft_global
 backend backend_debug_3
     http-request set-header Host 172.30.44.4
     reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /\2
-    rspirep ^(Location:)\ http://([^/]*)/(.*)$    \1\ http://\2//owncloud/\3
+    rspirep ^(Location:)\ http://([^/]*)/(.*)$    \1\ /owncloud/\3
     server debug_4 172.30.44.4:80
 backend backend_debug_7
     http-request set-header Host 172.30.44.3
     reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /owncloud/\2
-    rspirep ^(Location:)\ http://([^/]*)//owncloud(.*)$    \1\ http://\2//owncloud/\3
+    rspirep ^(Location:)\ http://([^/]*)//owncloud(.*)$    \1\ /owncloud/\3
     server debug_8 172.30.44.3:80
