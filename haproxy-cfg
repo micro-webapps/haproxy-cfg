@@ -174,13 +174,17 @@ class HAProxyProxyGenerator:
 
         # Default values...
         if not "proxy_backend_alias" in proxy_cfg:
-            proxy_cfg["proxy_backend_alias"] = "/"
+            proxy_cfg["proxy_backend_alias"] = ""
         if not "proxy_alias" in proxy_cfg:
-            proxy_cfg["proxy_alias"] = "/"
+            proxy_cfg["proxy_alias"] = ""
 
         parsed = urlparse(address)
         backend_alias = expand_variables(proxy_cfg["proxy_backend_alias"], self.p.app_name)
         proxy_alias = expand_variables(proxy_cfg["proxy_alias"], self.p.app_name)
+
+        # We include the trailing / in the following HAProxy commands.
+        if backend_alias == "/":
+            backend_alias = ""
 
         self.p.write(self.p.backends, "http-request set-header Host {0}", parsed.hostname)
         self.p.write(self.p.backends, "reqirep  ^([^\\ :]*)\\ {0}/(.*)     \\1\\ {1}/\\2", proxy_alias, backend_alias)
@@ -260,7 +264,7 @@ class HAProxyGenerator:
         
         for cfg in vhost_cfg:
             self.nested_sections.insert(0, "global")
-            alias = cfg["proxy_backend_alias"]
+            alias = cfg["proxy_alias"]
 
             backend_host = "backend_host_" + str(uuid.uuid1())
             backend_path = "backend_path_" + str(uuid.uuid1())

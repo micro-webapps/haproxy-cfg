@@ -26,9 +26,9 @@ frontend ft_global
     use_backend backend_debug_7 if backend_host_debug_5 backend_path_debug_6
 backend backend_debug_3
     http-request set-header Host 172.30.44.4
-    reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /owncloud/\2
+    reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /\2
     acl hdr_location res.hdr(Location) -m found
-    rspirep ^Location:\ (https?://172.30.44.4(:[0-9]+)?)?(/.*) Location:\ /owncloud/ if hdr_location
+    rspirep ^Location:\ (https?://172.30.44.4(:[0-9]+)?)?(/.*) Location:\ / if hdr_location
     server debug_4 172.30.44.4:80
 backend backend_debug_7
     http-request set-header Host 172.30.44.3
