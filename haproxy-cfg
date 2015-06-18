@@ -188,7 +188,7 @@ class HAProxyProxyGenerator:
         if proxy_alias == "/":
             proxy_alias = ""
 
-        self.p.write(self.p.backends, "http-request set-header Host {0}", parsed.hostname)
+        #self.p.write(self.p.backends, "http-request set-header Host {0}", parsed.hostname)
         self.p.write(self.p.backends, "reqirep  ^([^\\ :]*)\\ {0}/(.*)     \\1\\ {1}/\\2", proxy_alias, backend_alias)
 
         #self.p.write(self.p.backends, "acl hdr_location res.hdr(Location) -m found")
