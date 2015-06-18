@@ -185,12 +185,14 @@ class HAProxyProxyGenerator:
         # We include the trailing / in the following HAProxy commands.
         if backend_alias == "/":
             backend_alias = ""
+        if proxy_alias == "/":
+            proxy_alias = ""
 
         self.p.write(self.p.backends, "http-request set-header Host {0}", parsed.hostname)
         self.p.write(self.p.backends, "reqirep  ^([^\\ :]*)\\ {0}/(.*)     \\1\\ {1}/\\2", proxy_alias, backend_alias)
 
         self.p.write(self.p.backends, "acl hdr_location res.hdr(Location) -m found")
-        self.p.write(self.p.backends, "rspirep ^Location:\\ (https?://{0}(:[0-9]+)?)?(/.*) Location:\\ {1}/ if hdr_location", parsed.hostname, backend_alias)
+        self.p.write(self.p.backends, "rspirep ^Location:\\ (https?://{0}(:[0-9]+)?)?({1}/.*) Location:\\ {2}/ if hdr_location", parsed.hostname, backend_alias, proxy_alias)
 
         self.p.write(self.p.backends, "server {0} {1}", str(uuid.uuid1()), address[address.find("//") + 2:])
 
