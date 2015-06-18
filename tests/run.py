@@ -17,12 +17,13 @@ def runtest(d):
     print(bcolors.OKGREEN + "*** " + d + ": STARTING" + bcolors.ENDC)
     ret = os.system("rm -f ./" + d + "/*.conf")
 
-    cmd = 'export `cat {0}`; ../haproxy-cfg {1} {2} --debug; diff -u {3}/webconf.result {4}/*.conf'.format(d + "/test.env", d, d + "/haproxy.conf", d, d)
+    cmd = 'export `cat {0}`; ../haproxy-cfg {1} {2} --debug; diff -u {3}/webconf.result {4}/haproxy.conf'.format(d + "/test.env", d, d + "/haproxy.conf", d, d)
     #print("Executing:", cmd)
     ret = os.system(cmd)
     if ret != 0:
         print(bcolors.FAIL + "*** " + d + ": FAILED" + bcolors.ENDC)
         if len(sys.argv) == 2:
+            del sys.argv[1]
             os.system("mv {0}/*.conf {1}/webconf.result ".format(d, d))
         else:
             sys.exit(1)

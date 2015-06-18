@@ -259,7 +259,7 @@ class HAProxyGenerator:
         self.vhost_name = vhost
         
         for cfg in vhost_cfg:
-            self.nested_sections.insert(0, "virtualhost")
+            self.nested_sections.insert(0, "global")
             alias = cfg["proxy_backend_alias"]
 
             backend_host = "backend_host_" + str(uuid.uuid1())
@@ -274,6 +274,7 @@ class HAProxyGenerator:
             self.nested_sections.insert(0, "virtualhost")
 
             self.write_app_config(cfg)
+            self.nested_sections.pop(0)
         
         # TODO: Add SSL support
         #if not ssl:
@@ -342,25 +343,25 @@ def generate_config(inp, outp):
 
     main = StringIO.StringIO()
     main.write("""global
-        maxconn 4096
-        node lb1
-        spread-checks 5
+    maxconn 4096
+    node lb1
+    spread-checks 5
 
 defaults
-        log     global
-        mode    http
-        # option  httplog
-        option  dontlognull
-        retries 3
-        option redispatch
-        maxconn 2000
-        contimeout      5000
-        clitimeout      50000
-        srvtimeout      50000
+    log     global
+    mode    http
+    # option  httplog
+    option  dontlognull
+    retries 3
+    option redispatch
+    maxconn 2000
+    contimeout      5000
+    clitimeout      50000
+    srvtimeout      50000
 
 frontend ft_global
-        bind *:80
-        mode http
+    bind *:80
+    mode http
 """)
 
     backends = StringIO.StringIO()
