@@ -1,0 +1,29 @@
+global
+    maxconn 4096
+    node lb1
+    spread-checks 5
+
+defaults
+    log     global
+    mode    http
+    # option  httplog
+    option  dontlognull
+    retries 3
+    option redispatch
+    maxconn 2000
+    contimeout      5000
+    clitimeout      50000
+    srvtimeout      50000
+
+frontend ft_global
+    bind *:80
+    mode http
+    bind *:8443 ssl crt 003/certs prefer-server-ciphers
+    acl backend_host_debug_1 req.hdr(Host) localhost
+    acl backend_path_debug_2 path -m beg /owncloud
+    use_backend backend_debug_3 if backend_host_debug_1 backend_path_debug_2
+    use_backend backend_debug_3 if { ssl_fc_sni localhost }
+backend backend_debug_3
+    reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /owncloud/\2
+    rspirep ^(Location:)\ http://([^/]*)/owncloud/(.*)$    \1\ /owncloud/\3
+    server debug_4 172.30.44.3:80

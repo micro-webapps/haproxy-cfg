@@ -16,6 +16,7 @@ class bcolors:
 def runtest(d):
     print(bcolors.OKGREEN + "*** " + d + ": STARTING" + bcolors.ENDC)
     ret = os.system("rm -f ./" + d + "/*.conf")
+    ret = os.system("rm -rf ./" + d + "/certs")
 
     cmd = 'export `cat {0}`; ../haproxy-cfg {1} {2} --debug; diff -u {3}/webconf.result {4}/haproxy.conf'.format(d + "/test.env", d, d + "/haproxy.conf", d, d)
     #print("Executing:", cmd)
@@ -30,6 +31,7 @@ def runtest(d):
     else:
         print(bcolors.OKGREEN + "*** " + d + ": PASSED" + bcolors.ENDC)
         ret = os.system("rm -f ./" + d + "/*.conf")
+        ret = os.system("rm -rf ./" + d + "/certs")
 
 tests = os.listdir(".")
 tests.sort()
