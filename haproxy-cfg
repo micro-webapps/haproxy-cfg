@@ -273,7 +273,7 @@ class HAProxyGenerator:
             backend_path = "backend_path_" + str(uuid.uuid1())
             backend_name = "backend_" + str(uuid.uuid1())
             self.write(self.frontend, "acl {0} req.hdr(Host) {1}", backend_host, vhost)
-            self.write(self.frontend, "acl {0} path -m beg {1}", backend_path, alias)
+            self.write(self.frontend, "acl {0} path_reg ^{1}$|^{1}/", backend_path, alias)
             self.write(self.frontend, "use_backend {0} if {1} {2}", backend_name, backend_host, backend_path)
             
             if "certificate" in cfg and "certificate_key" in cfg:
@@ -302,7 +302,10 @@ def write_ssl_frontend(cfgs, outp):
             enable_ssl = True
 
     if enable_ssl:
-        outp.write("    bind *:8443 ssl crt " + cert_dir + " prefer-server-ciphers\n")
+        if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+            outp.write("    bind *:9443 ssl crt " + cert_dir + "\n")
+        else:
+            outp.write("    bind *:443 ssl crt " + cert_dir + "\n")
 
 def generate_config(inp, outp):
     cfgs = {"webapps":{}}
@@ -318,6 +321,10 @@ def generate_config(inp, outp):
 
         cfgs = json.load(f)
         f.close()
+
+    port = 80
+    if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+        port = 9090
 
     main = StringIO.StringIO()
     main.write("""global
@@ -338,9 +345,9 @@ defaults
     srvtimeout      50000
 
 frontend ft_global
-    bind *:80
+    bind *:{0}
     mode http
-""")
+""".format(port))
 
     backends = StringIO.StringIO()
 

@@ -16,19 +16,19 @@ defaults
     srvtimeout      50000
 
 frontend ft_global
-    bind *:80
+    bind *:9090
     mode http
     acl backend_host_debug_1 req.hdr(Host) localhost
-    acl backend_path_debug_2 path -m beg /owncloud
+    acl backend_path_debug_2 path_reg ^/owncloud2$|^/owncloud2/
     use_backend backend_debug_3 if backend_host_debug_1 backend_path_debug_2
     acl backend_host_debug_5 req.hdr(Host) localhost
-    acl backend_path_debug_6 path -m beg /owncloud
+    acl backend_path_debug_6 path_reg ^/owncloud$|^/owncloud/
     use_backend backend_debug_7 if backend_host_debug_5 backend_path_debug_6
 backend backend_debug_3
-    reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /\2
-    rspirep ^(Location:)\ http://([^/]*)/(.*)$    \1\ /owncloud/\3
-    server debug_4 172.30.44.4:80
+    reqirep  ^([^\ :]*)\ /owncloud2/(.*)     \1\ /\2
+    rspirep ^(Location:)\ http://([^/]*)/(.*)$    \1\ /owncloud2/\3
+    server debug_4 localhost:8081
 backend backend_debug_7
     reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /owncloud/\2
     rspirep ^(Location:)\ http://([^/]*)/owncloud/(.*)$    \1\ /owncloud/\3
-    server debug_8 172.30.44.3:80
+    server debug_8 localhost:8080

@@ -2,6 +2,6 @@
     "id": "webapp-owncloud2",
     "proxy_protocol": "http://",
     "virtualhost": "localhost",
-    "proxy_alias": "/owncloud",
+    "proxy_alias": "/owncloud2",
     "proxy_backend_alias": "/"
 }
