@@ -65,6 +65,9 @@ def test_generate_cfg(d):
     return ret
 
 def test_do_requests(d):
+    if not os.path.exists(d + "/requests.sh"):
+        return 0
+
     server_8080, thread_8080 = start_server(8080)
     server_8081, thread_8081 = start_server(8081)
 
@@ -78,8 +81,6 @@ def test_do_requests(d):
     if ret != 0:
         print(bcolors.FAIL + "*** " + d + ": FAILED" + bcolors.ENDC)
         print("requests.sh returned an error")
-    else:
-        print(bcolors.OKGREEN + "*** " + d + ": PASSED" + bcolors.ENDC)
     os.system("killall haproxy")
     os.system("sleep 1")
 
@@ -104,6 +105,7 @@ def runtest(d):
             break
 
     if ret == 0:
+        print(bcolors.OKGREEN + "*** " + d + ": PASSED" + bcolors.ENDC)
         cleanup(d)
     return ret
 
