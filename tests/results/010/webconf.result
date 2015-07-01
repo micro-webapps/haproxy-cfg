@@ -1,0 +1,29 @@
+global
+    maxconn 4096
+    node lb1
+    spread-checks 5
+
+defaults
+    log     global
+    mode    http
+    # option  httplog
+    option  dontlognull
+    retries 3
+    option redispatch
+    maxconn 2000
+    contimeout      5000
+    clitimeout      50000
+    srvtimeout      50000
+
+frontend ft_global
+    bind *:9090
+    mode http
+    bind *:9443 ssl crt 010/certs
+    acl backend_host_debug_1 req.hdr(Host) localhost:9090
+    acl backend_path_debug_2 path_reg ^/blog$|^/blog/
+    use_backend backend_debug_3 if backend_host_debug_1 backend_path_debug_2
+    use_backend backend_debug_3 if backend_path_debug_2 { ssl_fc_sni localhost }
+backend backend_debug_3
+    reqirep  ^([^\ :]*)\ /blog/(.*)     \1\ /\2
+    rspirep ^(Location:)\ http://([^/]*)/(.*)$    \1\ /blog/\3
+    server debug_4 localhost:8080

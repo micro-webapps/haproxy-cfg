@@ -18,10 +18,10 @@ defaults
 frontend ft_global
     bind *:9090
     mode http
-    acl backend_host_debug_1 req.hdr(Host) localhost
+    acl backend_host_debug_1 req.hdr(Host) localhost:9090
     acl backend_path_debug_2 path_reg ^/owncloud2$|^/owncloud2/
     use_backend backend_debug_3 if backend_host_debug_1 backend_path_debug_2
-    acl backend_host_debug_5 req.hdr(Host) localhost
+    acl backend_host_debug_5 req.hdr(Host) localhost:9090
     acl backend_path_debug_6 path_reg ^/owncloud$|^/owncloud/
     use_backend backend_debug_7 if backend_host_debug_5 backend_path_debug_6
 backend backend_debug_3

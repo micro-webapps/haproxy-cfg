@@ -266,18 +266,34 @@ class HAProxyGenerator:
         self.vhost_name = vhost
         
         for cfg in vhost_cfg:
+            if not "proxy_alias" in cfg:
+                cfg["proxy_alias"] = ""
+
             self.nested_sections.insert(0, "global")
             alias = cfg["proxy_alias"]
+            if alias == "/":
+                alias = ""
 
             backend_host = "backend_host_" + str(uuid.uuid1())
             backend_path = "backend_path_" + str(uuid.uuid1())
             backend_name = "backend_" + str(uuid.uuid1())
-            self.write(self.frontend, "acl {0} req.hdr(Host) {1}", backend_host, vhost)
+
+            if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+                self.write(self.frontend, "acl {0} req.hdr(Host) {1}:9090", backend_host, vhost)
+            else:
+                self.write(self.frontend, "acl {0} req.hdr(Host) {1}", backend_host, vhost)
+
+            if "redirects" in cfg and cfg["redirects"].items()[0][0] == "/":
+                if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+                    self.write(self.frontend, "redirect prefix https://{0}:9443 if {1} !{{ ssl_fc }}", vhost, backend_host)
+                else:
+                    self.write(self.frontend, "redirect scheme https code 301 if {0} !{{ ssl_fc }}", backend_host)
+
             self.write(self.frontend, "acl {0} path_reg ^{1}$|^{1}/", backend_path, alias)
             self.write(self.frontend, "use_backend {0} if {1} {2}", backend_name, backend_host, backend_path)
             
             if "certificate" in cfg and "certificate_key" in cfg:
-                self.write(self.frontend, "use_backend {0} if {{ ssl_fc_sni {1} }}", backend_name, vhost)
+                self.write(self.frontend, "use_backend {0} if {1} {{ ssl_fc_sni {2} }}", backend_name, backend_path, vhost)
 
             self.nested_sections.pop(0)
             self.write(self.backends, "backend {0}", backend_name)

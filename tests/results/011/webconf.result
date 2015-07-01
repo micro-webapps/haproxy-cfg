@@ -18,10 +18,13 @@ defaults
 frontend ft_global
     bind *:9090
     mode http
-    acl backend_host_debug_1 req.hdr(Host) localhost
-    acl backend_path_debug_2 path_reg ^/owncloud$|^/owncloud/
+    bind *:9443 ssl crt 011/certs
+    acl backend_host_debug_1 req.hdr(Host) localhost:9090
+    redirect prefix https://localhost:9443 if backend_host_debug_1 !{ ssl_fc }
+    acl backend_path_debug_2 path_reg ^/blog$|^/blog/
     use_backend backend_debug_3 if backend_host_debug_1 backend_path_debug_2
+    use_backend backend_debug_3 if backend_path_debug_2 { ssl_fc_sni localhost }
 backend backend_debug_3
-    reqirep  ^([^\ :]*)\ /owncloud/(.*)     \1\ /owncloud/\2
-    rspirep ^(Location:)\ http://([^/]*)/owncloud/(.*)$    \1\ /owncloud/\3
+    reqirep  ^([^\ :]*)\ /blog/(.*)     \1\ /\2
+    rspirep ^(Location:)\ http://([^/]*)/(.*)$    \1\ /blog/\3
     server debug_4 localhost:8080
