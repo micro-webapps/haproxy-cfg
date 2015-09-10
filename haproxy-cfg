@@ -124,8 +124,8 @@ class HAProxyProxyGenerator:
     # Returns None if the address cannot be obtained or is not set
     # in the proxy_cfg.
     def get_address(self, proxy_cfg):
-        if "proxy_protocol" in proxy_cfg:
-            ret = expand_variables(proxy_cfg["proxy_protocol"], self.p.app_name)
+        if "protocol" in proxy_cfg["proxy"]:
+            ret = expand_variables(proxy_cfg["proxy"]["protocol"], self.p.app_name)
             if len(ret) == 0:
                 ret = "http://"
         else:
@@ -147,21 +147,21 @@ class HAProxyProxyGenerator:
         else:
             # The APP_NAME_PORT variable is not set, so fallback to
             # proxy_hostname and proxy_port.
-            if "proxy_hostname" in proxy_cfg:
-                if proxy_cfg["proxy_hostname"] == "env":
-                    print("proxy_hostname is set to 'env', but {0} is not set".format(address_env))
+            if "hostname" in proxy_cfg["proxy"]:
+                if proxy_cfg["proxy"]["hostname"] == "env":
+                    print("proxy hostname is set to 'env', but {0} is not set".format(address_env))
                     return None
                 else:
-                    ret += proxy_cfg["proxy_hostname"]
+                    ret += proxy_cfg["proxy"]["hostname"]
             else:
                 return None
 
-            if "proxy_port" in proxy_cfg:
-                if proxy_cfg["proxy_hostname"] == "env":
-                    print("proxy_port is set to 'env', but {0} is not set".format(address_env))
+            if "port" in proxy_cfg["proxy"]:
+                if proxy_cfg["proxy"]["port"] == "env":
+                    print("proxy port is set to 'env', but {0} is not set".format(address_env))
                     return None
                 else:
-                    ret += ":" + str(proxy_cfg["proxy_port"])
+                    ret += ":" + str(proxy_cfg["proxy"]["port"])
             else:
                 return None
 
@@ -173,14 +173,14 @@ class HAProxyProxyGenerator:
             return
 
         # Default values...
-        if not "proxy_backend_alias" in proxy_cfg:
-            proxy_cfg["proxy_backend_alias"] = ""
-        if not "proxy_alias" in proxy_cfg:
-            proxy_cfg["proxy_alias"] = ""
+        if not "backend_alias" in proxy_cfg["proxy"]:
+            proxy_cfg["proxy"]["backend_alias"] = ""
+        if not "alias" in proxy_cfg["proxy"]:
+            proxy_cfg["proxy"]["alias"] = ""
 
         parsed = urlparse(address)
-        backend_alias = expand_variables(proxy_cfg["proxy_backend_alias"], self.p.app_name)
-        proxy_alias = expand_variables(proxy_cfg["proxy_alias"], self.p.app_name)
+        backend_alias = expand_variables(proxy_cfg["proxy"]["backend_alias"], self.p.app_name)
+        proxy_alias = expand_variables(proxy_cfg["proxy"]["alias"], self.p.app_name)
 
         # We include the trailing / in the following HAProxy commands.
         if backend_alias == "/":
@@ -198,11 +198,7 @@ class HAProxyProxyGenerator:
         self.p.write(self.p.backends, "server {0} {1}", str(uuid.uuid1()), address[address.find("//") + 2:])
 
     def handle(self, proxy_cfg):
-        if (not "proxy_hostname" in proxy_cfg
-            and not "proxy_port" in proxy_cfg
-            and not "proxy_protocol" in proxy_cfg
-            and not "proxy_alias" in proxy_cfg
-            and not "proxy_backend_alias" in proxy_cfg):
+        if not "proxy" in proxy_cfg:
             return True
 
         self.write_proxypass(proxy_cfg)
@@ -266,11 +262,13 @@ class HAProxyGenerator:
         self.vhost_name = vhost
         
         for cfg in vhost_cfg:
-            if not "proxy_alias" in cfg:
-                cfg["proxy_alias"] = ""
+            if not "proxy" in cfg:
+                cfg["proxy"] = {}
+            if not "alias" in cfg["proxy"]:
+                cfg["proxy"]["alias"] = ""
 
             self.nested_sections.insert(0, "global")
-            alias = cfg["proxy_alias"]
+            alias = cfg["proxy"]["alias"]
             if alias == "/":
                 alias = ""
 
