@@ -124,12 +124,21 @@ class HAProxyProxyGenerator:
     # Returns None if the address cannot be obtained or is not set
     # in the proxy_cfg.
     def get_address(self, proxy_cfg):
-        if "protocol" in proxy_cfg["proxy"]:
-            ret = expand_variables(proxy_cfg["proxy"]["protocol"], self.p.app_name)
+        ret = ""
+
+        if "url" in proxy_cfg["proxy"]:
+            url = urlparse(proxy_cfg["proxy"]["url"])
+
+            ret = expand_variables(url.scheme, self.p.app_name)
             if len(ret) == 0:
                 ret = "http://"
+            else:
+                ret += "://"
+
+            hostname = url.hostname
+            port = url.port
         else:
-            ret = "http://"
+            return None
 
         # For Kubernetes/Openshift, we allow getting the address and port of
         # the backend from the APP_NAME_PORT environment variable.
@@ -147,23 +156,7 @@ class HAProxyProxyGenerator:
         else:
             # The APP_NAME_PORT variable is not set, so fallback to
             # proxy_hostname and proxy_port.
-            if "hostname" in proxy_cfg["proxy"]:
-                if proxy_cfg["proxy"]["hostname"] == "env":
-                    print("proxy hostname is set to 'env', but {0} is not set".format(address_env))
-                    return None
-                else:
-                    ret += proxy_cfg["proxy"]["hostname"]
-            else:
-                return None
-
-            if "port" in proxy_cfg["proxy"]:
-                if proxy_cfg["proxy"]["port"] == "env":
-                    print("proxy port is set to 'env', but {0} is not set".format(address_env))
-                    return None
-                else:
-                    ret += ":" + str(proxy_cfg["proxy"]["port"])
-            else:
-                return None
+            ret += hostname + ":" + str(port)
 
         return ret
 
@@ -173,13 +166,18 @@ class HAProxyProxyGenerator:
             return
 
         # Default values...
-        if not "backend_alias" in proxy_cfg["proxy"]:
-            proxy_cfg["proxy"]["backend_alias"] = ""
         if not "alias" in proxy_cfg["proxy"]:
             proxy_cfg["proxy"]["alias"] = ""
 
+        # Get proxy_backend_alias or set it to "/" if not set.
+        if "url" in proxy_cfg["proxy"]:
+            url = urlparse(proxy_cfg["proxy"]["url"])
+            backend_alias = url.path
+        else:
+            return
+    
         parsed = urlparse(address)
-        backend_alias = expand_variables(proxy_cfg["proxy"]["backend_alias"], self.p.app_name)
+        backend_alias = expand_variables(backend_alias, self.p.app_name)
         proxy_alias = expand_variables(proxy_cfg["proxy"]["alias"], self.p.app_name)
 
         # We include the trailing / in the following HAProxy commands.
