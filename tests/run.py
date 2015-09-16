@@ -24,6 +24,9 @@ class TestImplementation:
         skipped.append("018")
         skipped.append("019")
         skipped.append("020")
+        skipped.append("021")
+        skipped.append("022")
+        skipped.append("023")
 
         return d in skipped
 

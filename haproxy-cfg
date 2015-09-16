@@ -195,23 +195,18 @@ class HAProxyProxyGenerator:
         #self.p.write(self.p.backends, "rspirep ^Location:\\ (https?://{0}(:[0-9]+)?)?({1}/.*) Location:\\ {2}/ if hdr_location", parsed.hostname, backend_alias, proxy_alias)
         self.p.write(self.p.backends, "rspirep ^(Location:)\\ http://([^/]*){0}/(.*)$    \\1\\ {1}/\\3".format(backend_alias, proxy_alias))
 
-        # We handle balancers in HaProxyBalancersGenerator
-        if not address.startswith("balancer://"):
+        if address.startswith("balancer://"):
+            print (parsed.netloc)
+            self.write_balancer(parsed.netloc)
+        else:
             self.p.write(self.p.backends, "server {0} {1}", str(uuid.uuid1()), address[address.find("//") + 2:])
 
-    def handle(self, proxy_cfg):
-        if not "proxy" in proxy_cfg:
-            return True
+    def write_balancer(self, name):
+        if not name in self.p.balancers:
+            return
 
-        self.write_proxypass(proxy_cfg)
-        return True
+        cfg = self.p.balancers[name]
 
-class HAProxyBalancersGenerator:
-    def __init__(self, parent):
-        self.p = parent
-        self.name = "balancers"
-
-    def write_balancer(self, name, cfg):
         if not "members" in cfg:
             return True
         if not "method" in cfg:
@@ -250,12 +245,30 @@ class HAProxyBalancersGenerator:
             url = urlparse(member["url"])
             self.p.write(self.p.backends, "server {0} {1}{2}", str(uuid.uuid1()), url.netloc, args)
 
-    def handle(self, cfg):
-        if not "balancers" in cfg:
+    def handle(self, proxy_cfg):
+        if not "proxy" in proxy_cfg:
             return True
 
-        for name, balancer in cfg["balancers"].items():
-            self.write_balancer(name, balancer)
+        self.write_proxypass(proxy_cfg)
+        return True
+
+class HAProxyLocationsGenerator:
+    def __init__(self, parent):
+        self.p = parent
+        self.name = "locations"
+
+    def handle(self, _cfg):
+        if not "locations" in _cfg:
+            return True
+
+        for location, cfg in _cfg["locations"].items():
+            location = expand_variables(location, self.p.app_name)
+            if len(location) == 0:
+                continue
+
+            if "proxy" in cfg and not "alias" in cfg["proxy"]:
+                cfg["proxy"]["alias"] = location
+            self.p.write_proxy_config(self.p.vhost_name, cfg)
 
         return True
 
@@ -271,11 +284,11 @@ class HAProxyGenerator:
         # or run_section_handlers.
         self.directive_handlers = []
         self.directive_handlers.append(HAProxyProxyGenerator(self))
-        self.directive_handlers.append(HAProxyBalancersGenerator(self))
 
         # Section handlers are supposed to do their stuff and call
         # run_directive_handlers or run_section_handlers
         self.section_handlers = []
+        self.section_handlers.append(HAProxyLocationsGenerator(self))
 
     # Writes the data to output file, expands the variables, uses the proper
     # indentation.
@@ -310,9 +323,47 @@ class HAProxyGenerator:
         return self.run_handlers(self.section_handlers, cfg, enable, disable)
 
     def write_app_config(self, app_cfg, enable = [], disable = []):
-        self.app_name = app_cfg["__name__"]
         self.run_directive_handlers(app_cfg, enable, disable)
-        self.run_section_handlers(app_cfg, enable, disable)
+
+    def write_proxy_config(self, vhost, cfg):
+        if not "proxy" in cfg:
+            return
+
+        if not "alias" in cfg["proxy"]:
+            cfg["proxy"]["alias"] = ""
+
+        self.nested_sections.insert(0, "global")
+        alias = cfg["proxy"]["alias"]
+        if alias == "/":
+            alias = ""
+
+        backend_host = "backend_host_" + str(uuid.uuid1())
+        backend_path = "backend_path_" + str(uuid.uuid1())
+        backend_name = "backend_" + str(uuid.uuid1())
+
+        if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+            self.write(self.frontend, "acl {0} req.hdr(Host) {1}:9090", backend_host, vhost)
+        else:
+            self.write(self.frontend, "acl {0} req.hdr(Host) {1}", backend_host, vhost)
+
+        if "redirects" in cfg and cfg["redirects"].items()[0][0] == "/":
+            if len(sys.argv) == 4 and sys.argv[3] == "--debug":
+                self.write(self.frontend, "redirect prefix https://{0}:9443 if {1} !{{ ssl_fc }}", vhost, backend_host)
+            else:
+                self.write(self.frontend, "redirect scheme https code 301 if {0} !{{ ssl_fc }}", backend_host)
+
+        self.write(self.frontend, "acl {0} path_reg ^{1}$|^{1}/", backend_path, alias)
+        self.write(self.frontend, "use_backend {0} if {1} {2}", backend_name, backend_host, backend_path)
+        
+        if "certificate" in cfg and "certificate_key" in cfg:
+            self.write(self.frontend, "use_backend {0} if {1} {{ ssl_fc_sni {2} }}", backend_name, backend_path, vhost)
+
+        self.nested_sections.pop(0)
+        self.write(self.backends, "backend {0}", backend_name)
+        self.nested_sections.insert(0, "virtualhost")
+
+        self.write_app_config(cfg)
+        self.nested_sections.pop(0)
 
     def write_vhost_config(self, vhost, vhost_cfg, ssl = False):
         self.vhost_name = vhost
@@ -323,38 +374,13 @@ class HAProxyGenerator:
             if not "alias" in cfg["proxy"]:
                 cfg["proxy"]["alias"] = ""
 
-            self.nested_sections.insert(0, "global")
-            alias = cfg["proxy"]["alias"]
-            if alias == "/":
-                alias = ""
-
-            backend_host = "backend_host_" + str(uuid.uuid1())
-            backend_path = "backend_path_" + str(uuid.uuid1())
-            backend_name = "backend_" + str(uuid.uuid1())
-
-            if len(sys.argv) == 4 and sys.argv[3] == "--debug":
-                self.write(self.frontend, "acl {0} req.hdr(Host) {1}:9090", backend_host, vhost)
+            self.app_name = cfg["__name__"]
+            if "balancers" in cfg:
+                self.balancers = cfg["balancers"]
             else:
-                self.write(self.frontend, "acl {0} req.hdr(Host) {1}", backend_host, vhost)
-
-            if "redirects" in cfg and cfg["redirects"].items()[0][0] == "/":
-                if len(sys.argv) == 4 and sys.argv[3] == "--debug":
-                    self.write(self.frontend, "redirect prefix https://{0}:9443 if {1} !{{ ssl_fc }}", vhost, backend_host)
-                else:
-                    self.write(self.frontend, "redirect scheme https code 301 if {0} !{{ ssl_fc }}", backend_host)
-
-            self.write(self.frontend, "acl {0} path_reg ^{1}$|^{1}/", backend_path, alias)
-            self.write(self.frontend, "use_backend {0} if {1} {2}", backend_name, backend_host, backend_path)
-            
-            if "certificate" in cfg and "certificate_key" in cfg:
-                self.write(self.frontend, "use_backend {0} if {1} {{ ssl_fc_sni {2} }}", backend_name, backend_path, vhost)
-
-            self.nested_sections.pop(0)
-            self.write(self.backends, "backend {0}", backend_name)
-            self.nested_sections.insert(0, "virtualhost")
-
-            self.write_app_config(cfg)
-            self.nested_sections.pop(0)
+                self.balancers = {}
+            self.run_section_handlers(cfg)
+            self.write_proxy_config(vhost, cfg)
 
 def write_ssl_frontend(cfgs, outp):
     cert_dir = sys.argv[2][:sys.argv[2].rfind("/")] + "/certs"

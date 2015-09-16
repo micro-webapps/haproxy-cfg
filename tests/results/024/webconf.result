@@ -1,0 +1,42 @@
+global
+    maxconn 4096
+    node lb1
+    spread-checks 5
+
+defaults
+    log     global
+    mode    http
+    # option  httplog
+    option  dontlognull
+    retries 3
+    option redispatch
+    maxconn 2000
+    contimeout      5000
+    clitimeout      50000
+    srvtimeout      50000
+
+frontend ft_global
+    bind *:9090
+    mode http
+    acl backend_host_debug_2 req.hdr(Host) localhost:9090
+    acl backend_path_debug_3 path_reg ^/foo$|^/foo/
+    use_backend backend_debug_4 if backend_host_debug_2 backend_path_debug_3
+    acl backend_host_debug_7 req.hdr(Host) localhost:9090
+    acl backend_path_debug_8 path_reg ^/blog$|^/blog/
+    use_backend backend_debug_9 if backend_host_debug_7 backend_path_debug_8
+    acl backend_host_debug_12 req.hdr(Host) localhost:9090
+    acl backend_path_debug_13 path_reg ^$|^/
+    use_backend backend_debug_14 if backend_host_debug_12 backend_path_debug_13
+backend backend_debug_4
+    reqirep  ^([^\ :]*)\ /foo/(.*)     \1\ /usr/share/wordpress/$1/\2
+    rspirep ^(Location:)\ http://([^/]*)/usr/share/wordpress/$1/(.*)$    \1\ /foo/\3
+    balance roundrobin
+    server debug_5 localhost:8080 weight 4
+    server debug_6 localhost:8081 weight 1
+backend backend_debug_9
+    reqirep  ^([^\ :]*)\ /blog/(.*)     \1\ /usr/share/wordpress/$1/\2
+    rspirep ^(Location:)\ http://([^/]*)/usr/share/wordpress/$1/(.*)$    \1\ /blog/\3
+    balance roundrobin
+    server debug_10 localhost:8080 weight 1
+    server debug_11 localhost:8081 weight 4
+backend backend_debug_14
