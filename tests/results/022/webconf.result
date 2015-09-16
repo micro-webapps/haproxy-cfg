@@ -1,0 +1,28 @@
+global
+    maxconn 4096
+    node lb1
+    spread-checks 5
+
+defaults
+    log     global
+    mode    http
+    # option  httplog
+    option  dontlognull
+    retries 3
+    option redispatch
+    maxconn 2000
+    contimeout      5000
+    clitimeout      50000
+    srvtimeout      50000
+
+frontend ft_global
+    bind *:9090
+    mode http
+    acl backend_host_debug_2 req.hdr(Host) localhost:9090
+    acl backend_path_debug_3 path_reg ^$|^/
+    use_backend backend_debug_4 if backend_host_debug_2 backend_path_debug_3
+backend backend_debug_4
+    cookie ROUTEID insert indirect nocache
+    balance roundrobin
+    server debug_5 localhost:8080 weight 1 check cookie node0
+    server debug_6 localhost:8081 weight 4 check cookie node1
