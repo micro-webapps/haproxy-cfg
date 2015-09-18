@@ -412,7 +412,6 @@ class HAProxyGenerator:
     def write_vhost_config(self, vhost, vhost_cfg, ssl = False):
         self.vhost_name = vhost
         self.merge_balancers(vhost_cfg)
-        print(vhost_cfg)
         
         for cfg in vhost_cfg:
             self.app_name = cfg["__name__"]
@@ -447,7 +446,9 @@ def write_ssl_frontend(cfgs, outp):
 def generate_config(inp, outp):
     cfgs = {"webapps":{}}
     if os.path.isdir(inp):
-        for f in os.listdir(inp):
+        files = os.listdir(inp)
+        files.sort()
+        for f in files:
             if f.endswith(".json"):
                 f = open(inp + "/" + f, "r")
                 c = json.load(f)
