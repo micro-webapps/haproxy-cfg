@@ -18,21 +18,21 @@ defaults
 frontend ft_global
     bind *:9090
     mode http
-    acl backend_host_debug_2 req.hdr(Host) localhost:9090
-    acl backend_path_debug_3 path_reg ^/foo$|^/foo/
-    use_backend backend_debug_4 if backend_host_debug_2 backend_path_debug_3
-    acl backend_host_debug_7 req.hdr(Host) localhost:9090
-    acl backend_path_debug_8 path_reg ^/blog$|^/blog/
-    use_backend backend_debug_9 if backend_host_debug_7 backend_path_debug_8
-backend backend_debug_4
+    acl backend_host_debug_4 req.hdr(Host) localhost:9090
+    acl backend_path_debug_5 path_reg ^/foo$|^/foo/
+    use_backend backend_debug_6 if backend_host_debug_4 backend_path_debug_5
+    acl backend_host_debug_9 req.hdr(Host) localhost:9090
+    acl backend_path_debug_10 path_reg ^/blog$|^/blog/
+    use_backend backend_debug_11 if backend_host_debug_9 backend_path_debug_10
+backend backend_debug_6
     reqirep  ^([^\ :]*)\ /foo/(.*)     \1\ /usr/share/wordpress/$1/\2
     rspirep ^(Location:)\ http://([^/]*)/usr/share/wordpress/$1/(.*)$    \1\ /foo/\3
     balance roundrobin
-    server debug_5 localhost:8080 weight 4
-    server debug_6 localhost:8081 weight 1
-backend backend_debug_9
+    server debug_7 localhost:8080 weight 4
+    server debug_8 localhost:8081 weight 1
+backend backend_debug_11
     reqirep  ^([^\ :]*)\ /blog/(.*)     \1\ /usr/share/wordpress/$1/\2
     rspirep ^(Location:)\ http://([^/]*)/usr/share/wordpress/$1/(.*)$    \1\ /blog/\3
     balance roundrobin
-    server debug_10 localhost:8080 weight 1
-    server debug_11 localhost:8081 weight 4
+    server debug_12 localhost:8080 weight 1
+    server debug_13 localhost:8081 weight 4
