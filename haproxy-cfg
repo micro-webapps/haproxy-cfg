@@ -455,6 +455,22 @@ class HAProxyGenerator:
             self.run_section_handlers(cfg)
             self.write_proxy_config(vhost, cfg)
 
+def write_cert(cert, vhost):
+    outdir = sys.argv[2][:sys.argv[2].rfind("/")]
+    if cert.startswith("-----BEGIN CERTIFICATE"):
+        filename = os.path.join(outdir, vhost + ".crt")
+    elif cert.startswith("-----BEGIN RSA PRIVATE KEY"):
+        filename = os.path.join(outdir, vhost + ".key")
+    else:
+        return cert
+
+    out = open(filename, "w")
+    out.write(cert.replace("\\n","\n"))
+    out.write("\n")
+    out.close()
+
+    return filename
+
 def write_ssl_frontend(cfgs, outp):
     cert_dir = sys.argv[2][:sys.argv[2].rfind("/")] + "/certs"
     os.system("mkdir -p " + cert_dir)
@@ -464,8 +480,8 @@ def write_ssl_frontend(cfgs, outp):
         for cfg in vhost_cfg:
             if not "certificate" in cfg or not "certificate_key" in cfg:
                 continue
-            cert = cfg["certificate"]
-            key = cfg["certificate_key"]
+            cert = write_cert(cfg["certificate"], vhost)
+            key = write_cert(cfg["certificate_key"], vhost)
             pem_file = cert_dir + "/" + os.path.basename(cert) + ".pem"
             os.system("cat {0} {1} > {2}".format(cert, key, pem_file));
             enable_ssl = True
