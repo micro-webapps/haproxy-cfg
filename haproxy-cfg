@@ -213,7 +213,7 @@ class HAProxyProxyGenerator:
             else:
                 if parsed.scheme == "http":
                     port = ":80"
-                elif parse.scheme == "https":
+                elif parsed.scheme == "https":
                     port = ":443"
             self.p.write(self.p.backends, "server {0} {1}{2}", str(uuid.uuid1()), address[address.find("//") + 2:], port)
 
@@ -259,7 +259,17 @@ class HAProxyProxyGenerator:
                     args += " check cookie " + str(uuid.uuid1())
 
             url = urlparse(member["url"])
-            self.p.write(self.p.backends, "server {0} {1}{2}", str(uuid.uuid1()), url.netloc, args)
+
+            port = url.port
+            if port:
+                port = ""
+            else:
+                if url.scheme == "http":
+                    port = ":80"
+                elif url.scheme == "https":
+                    port = ":443"
+
+            self.p.write(self.p.backends, "server {0} {1}{2}{3}", str(uuid.uuid1()), url.netloc, port, args)
 
     def handle(self, proxy_cfg):
         if not "proxy" in proxy_cfg:
