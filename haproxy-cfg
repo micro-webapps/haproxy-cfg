@@ -207,7 +207,15 @@ class HAProxyProxyGenerator:
             print (parsed.netloc)
             self.write_balancer(parsed.netloc)
         else:
-            self.p.write(self.p.backends, "server {0} {1}", str(uuid.uuid1()), address[address.find("//") + 2:])
+            port = parsed.port
+            if port:
+                port = ""
+            else:
+                if parsed.scheme == "http":
+                    port = ":80"
+                elif parse.scheme == "https":
+                    port = ":443"
+            self.p.write(self.p.backends, "server {0} {1}{2}", str(uuid.uuid1()), address[address.find("//") + 2:], port)
 
     def write_balancer(self, name):
         if not name in self.p.balancers:
