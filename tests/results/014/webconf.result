@@ -19,11 +19,9 @@ frontend ft_global
     bind *:9090
     mode http
     acl backend_host_debug_2 req.hdr(Host) localhost:9090
-    acl backend_path_debug_3 path_reg ^/blog/.*\.txt$
+    acl backend_path_debug_3 path_reg ^/blog$|^/blog/
     use_backend backend_debug_4 if backend_host_debug_2 backend_path_debug_3
 backend backend_debug_4
     reqirep  ^([^\ :]*)\ /blog/(.*)     \1\ /usr/share/wordpress/$1/\2
     rspirep ^(Location:)\ http://([^/]*)/usr/share/wordpress/$1/(.*)$    \1\ /blog/\3
-    balance roundrobin
-    server debug_5 localhost:8080 weight 1
-    server debug_6 localhost:8081 weight 4
+    server debug_5 localhost:8081

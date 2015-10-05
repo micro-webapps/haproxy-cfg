@@ -12,22 +12,15 @@ class TestImplementation:
 
     def skip_test(self, d):
         skipped = []
-        skipped.append("002")
-        skipped.append("003")
-        skipped.append("004")
-        skipped.append("005")
-        skipped.append("008")
-        skipped.append("012")
-        skipped.append("013")
-        skipped.append("014")
-        skipped.append("015")
-        skipped.append("018")
-        skipped.append("019")
-        skipped.append("020")
-        skipped.append("021")
-        skipped.append("022")
-        skipped.append("023")
-        skipped.append("026")
+        skipped.append("002") # No proxy directive
+        skipped.append("003") # No proxy directive
+        skipped.append("004") # No proxy directive
+        skipped.append("005") # No proxy directive
+        skipped.append("012") # There is no default proxy, this is covered by test 013
+        skipped.append("015") #TODO: Redirects not supported yet
+        skipped.append("018") # No proxy directive
+        skipped.append("019") # No proxy directive
+        skipped.append("026") # error documents not supported by haproxy
 
         return d in skipped
 

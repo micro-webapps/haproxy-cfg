@@ -138,6 +138,13 @@ class HAProxyProxyGenerator:
 
             hostname = url.hostname
             port = url.port
+
+            # We must not replace the name of balancer with hostname from env.
+            if url.scheme == "balancer":
+                ret += hostname
+                if port:
+                    ret += ":" + str(port)
+                return ret
         else:
             return None
 
@@ -253,10 +260,27 @@ class HAProxyProxyGenerator:
         self.write_proxypass(proxy_cfg)
         return True
 
+class HAProxyMatchGenerator:
+    def __init__(self, parent):
+        self.p = parent
+        self.name = "match"
+
+    def handle(self, _cfg):
+        if not "match" in _cfg:
+            return True
+
+        for pattern, cfg in _cfg["match"].items():
+            if "proxy" in cfg and not "alias" in cfg["proxy"] and "__location__" in _cfg:
+                cfg["proxy"]["alias"] = _cfg["__location__"]
+            self.p.write_proxy_config(self.p.vhost_name, cfg, pattern)
+
+        return True
+
 class HAProxyLocationsGenerator:
     def __init__(self, parent):
         self.p = parent
         self.name = "locations"
+        self.in_locations = False
 
     def handle(self, _cfg):
         if not "locations" in _cfg:
@@ -267,9 +291,14 @@ class HAProxyLocationsGenerator:
             if len(location) == 0:
                 continue
 
+            if "match" in cfg:
+                cfg["__location__"] = location
+                generator = HAProxyMatchGenerator(self.p)
+                generator.handle(cfg)
+
             if "proxy" in cfg and not "alias" in cfg["proxy"]:
                 cfg["proxy"]["alias"] = location
-            self.p.write_proxy_config(self.p.vhost_name, cfg)
+            self.p.write_proxy_config(self.p.vhost_name, cfg, disable = ["match"])
 
         return True
 
@@ -285,6 +314,7 @@ class HAProxyGenerator:
         # or run_section_handlers.
         self.directive_handlers = []
         self.directive_handlers.append(HAProxyProxyGenerator(self))
+        self.directive_handlers.append(HAProxyMatchGenerator(self))
 
         # Section handlers are supposed to do their stuff and call
         # run_directive_handlers or run_section_handlers
@@ -326,7 +356,7 @@ class HAProxyGenerator:
     def write_app_config(self, app_cfg, enable = [], disable = []):
         self.run_directive_handlers(app_cfg, enable, disable)
 
-    def write_proxy_config(self, vhost, cfg):
+    def write_proxy_config(self, vhost, cfg, pattern = None, disable = []):
         if not "proxy" in cfg:
             return
 
@@ -353,7 +383,10 @@ class HAProxyGenerator:
             else:
                 self.write(self.frontend, "redirect scheme https code 301 if {0} !{{ ssl_fc }}", backend_host)
 
-        self.write(self.frontend, "acl {0} path_reg ^{1}$|^{1}/", backend_path, alias)
+        if pattern:
+            self.write(self.frontend, "acl {0} path_reg ^{1}/.*{2}", backend_path, alias, pattern)
+        else:
+            self.write(self.frontend, "acl {0} path_reg ^{1}$|^{1}/", backend_path, alias)
         self.write(self.frontend, "use_backend {0} if {1} {2}", backend_name, backend_host, backend_path)
         
         if "certificate" in cfg and "certificate_key" in cfg:
@@ -361,9 +394,9 @@ class HAProxyGenerator:
 
         self.nested_sections.pop(0)
         self.write(self.backends, "backend {0}", backend_name)
-        self.nested_sections.insert(0, "virtualhost")
 
-        self.write_app_config(cfg)
+        self.nested_sections.insert(0, "virtualhost")
+        self.write_app_config(cfg, disable = disable)
         self.nested_sections.pop(0)
 
     # Merges balancers from multiple webconf-spec configs into the single one.
