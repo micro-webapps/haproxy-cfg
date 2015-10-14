@@ -22,7 +22,26 @@ The following table describes current level of webconf-spec implementation. Note
 | match | ✔ | Only with `proxy` payload. |
 | match.allow |  ✘ | |
 | proxy | ✔ | |
-| raw_config | ✘ | Not supported yet. |
+| raw_config | ✔ | Supported, but see the note below. |
 | redirects | ✘ | Not supported yet. |
 | version | ✔ | |
 | virtualhost | ✔ | |
+
+### Raw config support in HAProxy
+
+Because HAProxy uses frontend and backends parts of the configuration file, the `raw_config` directive semantic is following:
+
+    "raw_config": {
+        "haproxy_frontend >= 0.1": [
+            "acl backend_host_debug_1 req.hdr(Host) localhost:9090",
+            "acl backend_path_debug_2 path_reg ^/owncloud$|^/owncloud/",
+            "use_backend backend_debug_3 if backend_host_debug_1 backend_path_debug_2"
+        ],
+        "haproxy_backend backend_debug_3 >= 0.1": [
+            "reqirep  ^([^\\ :]*)\\ /owncloud/(.*)     \\1\\ /owncloud/\\2",
+            "rspirep ^(Location:)\\ http://([^/]*)/owncloud/(.*)$    \\1\\ /owncloud/\\3",
+            "server debug_4 localhost:8080"
+        ]
+    }
+
+The `haproxy_frontend` key defines configuration directives which are appended into frontend's configuration. The `haproxy_backend` key defines configuration directives which are appended into current backend's configuration, or if you want to define new backend, you can do it by adding its name as a single word after the `haproxy_backend` key as showed in the example above.

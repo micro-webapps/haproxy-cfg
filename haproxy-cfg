@@ -319,6 +319,28 @@ class HAProxyLocationsGenerator:
 
         return True
 
+class HAProxyRawConfigGenerator:
+    def __init__(self, parent):
+        self.p = parent
+        self.name = "raw_config"
+
+    def handle(self, cfg):
+        if not "raw_config" in cfg:
+            return True
+
+        for semver, lines in cfg["raw_config"].items():
+            if semver.startswith("haproxy_backend"):
+                tokens = semver.split(" ")
+                if len(tokens) == 4:
+                    self.p.write(self.p.backends, "backend {0}", tokens[1])
+                for line in lines:
+                    self.p.write(self.p.backends, line.replace("{", "{{").replace("}", "}}"))
+            elif semver.startswith("haproxy_frontend"):
+                for line in lines:
+                    self.p.write(self.p.frontend, line.replace("{", "{{").replace("}", "}}"))
+
+        return True
+
 class HAProxyGenerator:
     def __init__(self, main, backends):
         self.frontend = main
@@ -332,6 +354,7 @@ class HAProxyGenerator:
         self.directive_handlers = []
         self.directive_handlers.append(HAProxyProxyGenerator(self))
         self.directive_handlers.append(HAProxyMatchGenerator(self))
+        self.directive_handlers.append(HAProxyRawConfigGenerator(self))
 
         # Section handlers are supposed to do their stuff and call
         # run_directive_handlers or run_section_handlers
@@ -375,6 +398,8 @@ class HAProxyGenerator:
 
     def write_proxy_config(self, vhost, cfg, pattern = None, disable = []):
         if not "proxy" in cfg:
+            # The proxy part can be defined as raw_config...
+            self.run_directive_handlers(cfg, enable = "raw_config")
             return
 
         if not "alias" in cfg["proxy"]:
