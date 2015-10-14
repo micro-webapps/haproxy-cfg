@@ -2,11 +2,11 @@ language: cpp
 compiler:
   - gcc
 install:
-  - sudo apt-get -qq update
+  - sudo apt-get -qq update || true
   - sudo apt-get -qq install python3
 before_script:
   - sudo add-apt-repository ppa:vbernat/haproxy-1.5 -y
-  - sudo apt-get update -q
+  - sudo apt-get update -qq || true
   - sudo apt-get install haproxy
 script:
   - ./runtests
